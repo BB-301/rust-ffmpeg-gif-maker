@@ -1,5 +1,9 @@
 use std::time::Duration;
 
+// NOTE: The functions in this file appear to be working for
+// parsing the output of `ffmpeg version 5.0-tessus`, but they
+// could definitely use more testing.
+
 fn duration_from_ffmpeg_time_string(s: &str) -> Option<Duration> {
     // Expected format:  HH:mm:ss.ms (e.g. 00:00:04.91)
 

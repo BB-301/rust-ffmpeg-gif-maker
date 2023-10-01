@@ -12,10 +12,10 @@ pub type CommandSender = std::sync::mpsc::Sender<Command>;
 pub type CommandReceiver = std::sync::mpsc::Receiver<Command>;
 #[cfg(not(feature = "tokio"))]
 /// The sender's end of an mpsc [`Message`] channel.
-pub type MessageReceiver = std::sync::mpsc::Receiver<Message>;
+pub type MessageSender = std::sync::mpsc::Sender<Message>;
 #[cfg(not(feature = "tokio"))]
 /// The reciever's end of an mpsc [`Message`] channel.
-pub type MessageSender = std::sync::mpsc::Sender<Message>;
+pub type MessageReceiver = std::sync::mpsc::Receiver<Message>;
 
 #[cfg(feature = "tokio")]
 /// The sender's end of an mpsc [`Command`] channel.
@@ -25,10 +25,10 @@ pub type CommandSender = tokio::sync::mpsc::UnboundedSender<Command>;
 pub type CommandReceiver = tokio::sync::mpsc::UnboundedReceiver<Command>;
 #[cfg(feature = "tokio")]
 /// The sender's end of an mpsc [`Message`] channel.
-pub type MessageReceiver = tokio::sync::mpsc::UnboundedReceiver<Message>;
+pub type MessageSender = tokio::sync::mpsc::UnboundedSender<Message>;
 #[cfg(feature = "tokio")]
 /// The reciever's end of an mpsc [`Message`] channel.
-pub type MessageSender = tokio::sync::mpsc::UnboundedSender<Message>;
+pub type MessageReceiver = tokio::sync::mpsc::UnboundedReceiver<Message>;
 
 /// A structure containing the information required to start
 /// and perform the conversion job.
