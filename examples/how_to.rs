@@ -1,0 +1,48 @@
+use ffmpeg_gif_maker::{Converter, Error, Message, Settings};
+
+const INPUT_VIDEO_PATH: &'static str = "./assets/big-buck-bunny-clip.mp4";
+const OUTPUT_GIF_WIDTH: u16 = 200;
+
+fn main() {
+    let settings = Settings::with_standard_fps(INPUT_VIDEO_PATH.into(), OUTPUT_GIF_WIDTH);
+
+    let (converter, _, mut rx) = Converter::new_with_channels();
+
+    let handle_converter_thread = std::thread::spawn(move || {
+        converter.convert(settings);
+    });
+
+    loop {
+        match rx
+            .blocking_recv()
+            .expect("Other end of channel was closed?")
+        {
+            Message::Error(e) => match e {
+                Error::Cancelled => {
+                    // NOTE: This will never get called here because we don't perform
+                    // any cancellation command.
+                    println!("Received cancellation confirmation, so leaving...");
+                    break;
+                }
+                _ => {
+                    panic!("Received and error: {:?}", e);
+                }
+            },
+            Message::Success(bytes) => {
+                // NOTE: You could save the output to a file here.
+                println!("Generated GIF size: {} bytes", bytes.len());
+                break;
+            }
+            Message::Progress(progress) => {
+                println!("Progress: {:.02} %", (progress * 100.0).round() / 100.0);
+            }
+            Message::VideoDuration(duration) => {
+                println!("Received info about video duration: {:?}", duration);
+            }
+        }
+    }
+
+    println!("Waiting for converter thread to exit...");
+    handle_converter_thread.join().expect("Failed to join");
+    println!("All done!");
+}

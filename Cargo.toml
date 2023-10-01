@@ -1,0 +1,18 @@
+[package]
+authors = ["BB-301 <fw3dg3@gmail.com>"]
+description = "Animated GIF generator Rust library based on a simple FFmpeg child process wrapper"
+edition = "2021"
+license = "MIT"
+name = "ffmpeg_gif_maker"
+repository = "https://github.com/BB-301/rust-ffmpeg-gif-maker"
+version = "0.1.0"
+
+[features]
+default = []
+tokio = ["dep:tokio"]
+
+[dependencies]
+tokio = {version = "1.0", optional = true, features = ["sync"]}
+
+[dev-dependencies]
+tokio = {version = "1.0", features = ["rt-multi-thread", "sync", "macros"]}
