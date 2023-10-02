@@ -1,6 +1,6 @@
 # Animated GIF Generator Rust Library Based On A Simple FFmpeg Child Process Wrapper
 
-This is a simple, very experimental Rust library that makes a system call to `FFmpeg` to generate an animated GIF from a video input path.
+This is a simple, very experimental Rust library that makes a system call to `FFmpeg` to generate an animated GIF from a video path.
 
 ## Disclaimer
 
@@ -8,7 +8,7 @@ This project is still (and will likely always remain) in an early experimental s
 
 ## Requirements
 
-* The library assumes that the system has `ffmpeg version 5.0-tessus` installed on its path. You may run `ffmpeg -version` in a terminal to confirm that. See [FFmpeg - Downloads](https://ffmpeg.org/download.html#releases) if you need to install it. It is possible that the library will work with other versions, but I have not tested it.
+* The library assumes that the system has `ffmpeg version 5.0-tessus` installed on its path. You may run `ffmpeg -version` in a terminal to confirm that. See [FFmpeg - Downloads](https://ffmpeg.org/download.html#releases) if you need to install it. It is possible that the library will work with other versions, but this was not tested.
 
 ## Feature flags
 
@@ -16,11 +16,11 @@ The library relies on `mpsc` channels for communication between threads. You can
 
 ### Feature flags and documentation
 
-To view the documentation for the `default` feature flag (or no flag at all), run `cargo doc --features default --open` in a terminal; to view the documentation for the `tokio` feature flag, run `cargo doc --features tokio --open` in a terminal.
+To view the documentation for the `default` feature flag (or no flag at all), run `cargo doc --features default --no-deps --open` in a terminal; to view the documentation for the `tokio` feature flag, run `cargo doc --features tokio --no-deps --open` in a terminal.
 
 ## Examples
 
-The [./examples](./examples) directory contains two examples that illustrate how the library can be used. One example uses blocking calls on the receiver's end, while the other example uses none blocking calls. Both examples require the `tokio` flag. The reason for which there is no example using the `default` flag is simply because I haven't been able to configure the `rust-analyzer` in a way that it wouldn't complain with examples of both types in the same workspace (i.e. I can only either specify `tokio` or `default` in [./.vscode/settings.json](./.vscode/settings.json)).
+The [./examples](./examples) directory contains two examples that illustrate how the library can be used. One example uses blocking calls on the receiver's end, while the other example uses non blocking calls. Both examples require the `tokio` flag. The reason for which there is no example using the `default` flag is simply because I haven't been able to configure the `rust-analyzer` in a way that it wouldn't complain with examples of both types in the same workspace (i.e. I can only either specify `tokio` or `default` in [./.vscode/settings.json](./.vscode/settings.json)).
 
 So, here's how to run the examples:
 * `cargo run --features tokio --example how_to`

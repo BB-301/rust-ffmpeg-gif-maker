@@ -1,6 +1,6 @@
 # Animated GIF Generator Rust Library Based On A Simple FFmpeg Child Process Wrapper
 
-This is a simple, very experimental Rust library that makes a system call to `FFmpeg` to generate an animated GIF from a video input path.
+This is a simple, very experimental Rust library that makes a system call to `FFmpeg` to generate an animated GIF from a video path.
 
 ## Disclaimer
 
@@ -8,7 +8,7 @@ This project is still (and will likely always remain) in an early experimental s
 
 ## Requirements
 
-* The library assumes that the system has `ffmpeg version 5.0-tessus` installed on its path. You may run `ffmpeg -version` in a terminal to confirm that. See [FFmpeg - Downloads](https://ffmpeg.org/download.html#releases) if you need to install it. It is possible that the library will work with other versions, but I have not tested it.
+* The library assumes that the system has `ffmpeg version 5.0-tessus` installed on its path. You may run `ffmpeg -version` in a terminal to confirm that. See [FFmpeg - Downloads](https://ffmpeg.org/download.html#releases) if you need to install it. It is possible that the library will work with other versions, but this was not tested.
 
 ## Example
 

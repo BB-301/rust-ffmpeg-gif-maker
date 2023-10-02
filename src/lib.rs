@@ -50,8 +50,8 @@ pub enum Error {
     ExitCode(i32),
     /// A confirmation that signals that the conversion job has been cancelled.
     Cancelled,
-    /// Contains the [`std::io::Error`] returned by calling the `.wait` method
-    /// on the child process.
+    /// Contains the [`std::io::Error`] returned by calling the `wait` method
+    /// on the [`std::process::Child`] process.
     ChildProcess(std::sync::Arc<std::io::Error>),
 }
 
@@ -70,15 +70,15 @@ pub enum Message {
     Success(Vec<u8>),
     /// An error message, containing the [`Error`].
     Error(Error),
-    /// The progress (between 0.0 and 1.0) made by the converter, estimated
+    /// The progress (a value between 0.0 and 1.0) made by the converter, estimated
     /// by taking the number of processed frames divided by the total number
     /// of frames.
     ///
     /// NOTE: Progress messages don't start being emitted right away.
-    /// The [`Message::VideoDuration`] should be emitted first.
+    /// The [`Message::VideoDuration`] will (should) be emitted first.
     Progress(f64),
     /// The video duration, determined by FFmpeg as a first step in creating
-    /// the animated GIF. Note that this event should be emitted before
+    /// the animated GIF. Note that this event will (should) be emitted before
     /// the [`Message::Progress`] event.
     VideoDuration(std::time::Duration),
 }

@@ -30,8 +30,8 @@ pub type MessageSender = tokio::sync::mpsc::UnboundedSender<Message>;
 /// The reciever's end of an mpsc [`Message`] channel.
 pub type MessageReceiver = tokio::sync::mpsc::UnboundedReceiver<Message>;
 
-/// A structure containing the information required to start
-/// and perform the conversion job.
+/// A structure containing the information required to
+/// perform the conversion job.
 pub struct Converter {
     /// The sender's end of the [`Message`] channel.
     tx: MessageSender,
