@@ -1,0 +1,24 @@
+# 0.1.1 (2023-10-10)
+
+## Added
+
+* Added logging support (based on `log = "0.4.20"` crate).
+* Added a [CHANGELOG](./CHANGELOG) file (i.e. this file).
+
+## Changed
+
+* (Breaking) Added `Error::EmptyStdout` variant.
+* (Breaking) Added `Message::Done` variant.
+* Added optional `ffmpeg_path` setter method to the `Settings` structure,
+so the user can now specify the path of the FFmpeg library to use when spawning the child process.
+* Fixed a few typos and improved docs.
+
+## Misc
+
+* The library was tested with `ffmpeg version 6.0-tessus` on macOS
+and appears to be working fine with that version as well (i.e. in
+addition to `ffmpeg version 5.0-tessus`).
+
+# 0.1.0 (2023-10-01)
+
+This was the first version

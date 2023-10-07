@@ -1,4 +1,4 @@
-use ffmpeg_gif_maker::{Converter, Error, Message, Settings};
+use ffmpeg_gif_maker::{Converter, Message, Settings};
 
 const INPUT_VIDEO_PATH: &'static str = "./assets/big-buck-bunny-clip.mp4";
 const OUTPUT_GIF_WIDTH: u16 = 200;
@@ -17,17 +17,13 @@ fn main() {
             .blocking_recv()
             .expect("Other end of channel was closed?")
         {
-            Message::Error(e) => match e {
-                Error::Cancelled => {
-                    // NOTE: This will never get called here because we don't perform
-                    // any cancellation command.
-                    println!("Received cancellation confirmation, so leaving...");
-                    break;
-                }
-                _ => {
-                    panic!("Received and error: {:?}", e);
-                }
-            },
+            Message::Done => {
+                println!("Done message received, so breaking loop...");
+                break;
+            }
+            Message::Error(e) => {
+                eprintln!("Error message recived: {:?}", e);
+            }
             Message::Success(bytes) => {
                 // NOTE: You could save the output to a file here.
                 println!("Generated GIF size: {} bytes", bytes.len());

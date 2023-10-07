@@ -8,11 +8,12 @@ This project is still (and will likely always remain) in an early experimental s
 
 ## Requirements
 
-* The library assumes that the system has `ffmpeg version 5.0-tessus` installed on its path. You may run `ffmpeg -version` in a terminal to confirm that. See [FFmpeg - Downloads](https://ffmpeg.org/download.html#releases) if you need to install it. It is possible that the library will work with other versions, but this was not tested.
+* The library assumes that the system has `ffmpeg version 5.0-tessus` or `ffmpeg version 6.0-tessus` installed on its path. You may run `ffmpeg -version` in a terminal to confirm that. See [FFmpeg - Downloads](https://ffmpeg.org/download.html#releases) if you need to install it. It is possible that the library will work with other versions, but this was not tested.
+  * NOTE: It is now possible to specify the path of the `ffmpeg` binary using the `Settings::ffmpeg_path` method.
 
 ## Feature flags
 
-The library relies on `mpsc` channels for communication between threads. You can use the `default` (or, equivalently, no flag at all) feature flag to use [std::sync::mpsc](https://doc.rust-lang.org/std/sync/mpsc/index.html) channels, or use the `tokio` feature flag to instead use the [tokio::sync::mpsc](https://docs.rs/tokio/latest/tokio/sync/mpsc/index.html) unbounded channels. The `tokio` channels are allowed to be send between asynchronous tasks, which may be a requirement for some applications.
+The library relies on `mpsc` channels for communication between threads. You can use the `default` (or, equivalently, no flag at all) feature flag to use [std::sync::mpsc](https://doc.rust-lang.org/std/sync/mpsc/index.html) channels, or use the `tokio` feature flag to instead use the [tokio::sync::mpsc](https://docs.rs/tokio/latest/tokio/sync/mpsc/index.html) unbounded channels. The `tokio` channels are allowed to be sent between asynchronous tasks, which may be a requirement for some applications.
 
 ### Feature flags and documentation
 
@@ -33,6 +34,7 @@ You may also checkout my other repository for an example illustrating how the li
 ## Other useful links and references
 
 * Check out [How to Make a GIF from a Video using FFmpeg](https://creatomate.com/blog/how-to-make-a-gif-from-a-video-using-ffmpeg) for a nice article on how to convert a video to an animated GIF using FFmpeg.
+* [Using libav*](https://trac.ffmpeg.org/wiki/Using%20libav*): This webpage literally gave me my idea for this project. To quote them: <blockquote>... Also note that if you just need to convert/transcode videos within your own application, you could make a system call out to the FFmpeg executable to do the heavy lifting for you. You can parse the output for stdout for status information, or use the -progress option to make the output even more parseable.</blockquote>
 
 ## Contact
 
