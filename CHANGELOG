@@ -1,4 +1,14 @@
-# 0.1.1 (2023-10-10)
+# 0.1.1 (2023-10-07; second deployment)
+
+## Changed
+
+* Fixed an issue in the `Converter::convert` implementation: `stdin` thread would
+not return after a successfully completed job.
+  * API did not change so kept version to `0.1.1`.
+* Fixed a mistake in this very file: previous entry had been marked
+as `2023-10-10` but should have been `2023-10-07`.
+
+# 0.1.1 (2023-10-07; first deployment)
 
 ## Added
 

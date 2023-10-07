@@ -4,6 +4,8 @@ use crate::time_parsing::{progress_from_durations, try_extract_duration, try_ext
 
 use super::{Command, Error, Message, Settings};
 
+const STDIN_THREAD_SLEEP_DURATION_MS: u64 = 50;
+
 const LOG_TARGET_MAIN: &'static str = "ffmpeg_gif_maker::converter::main_thread";
 const LOG_TARGET_STDIN: &'static str = "ffmpeg_gif_maker::converter::stdin_thread";
 const LOG_TARGET_STDOUT: &'static str = "ffmpeg_gif_maker::converter::stdout_thread";
@@ -49,6 +51,11 @@ pub struct Converter {
     /// NOTE: Technically, this wouldn't have to be stored in the structure,
     /// but it's OK for now.
     job_cancelled: std::sync::Arc<std::sync::Mutex<bool>>,
+    /// Whether the job has ended (i.e. the child process's `stdout` has returned).
+    ///
+    /// NOTE: Just like `job_cancelled`, this wouldn't have to be stored in the structure,
+    /// but it's OK for now (besides, better be consistent).
+    job_ended: std::sync::Arc<std::sync::Mutex<bool>>,
     /// A unique identifier for the instance, used by internal logging logic
     /// to be able to output meaningful logs.
     id: uuid::Uuid,
@@ -81,6 +88,7 @@ impl Converter {
                 tx: message_tx,
                 rx: RefCell::new(Some(command_rx)),
                 job_cancelled: std::sync::Arc::new(std::sync::Mutex::new(false)),
+                job_ended: std::sync::Arc::new(std::sync::Mutex::new(false)),
                 id: uuid::Uuid::new_v4(),
             },
             command_tx,
@@ -160,36 +168,42 @@ impl Converter {
             panic!();
         };
         let job_cancelled_stdin = std::sync::Arc::clone(&self.job_cancelled);
+        let job_ended_stdin = std::sync::Arc::clone(&self.job_ended);
         let id_stdin = self.id();
         let handle_stdin = std::thread::spawn(move || {
             log::info!(target: LOG_TARGET_STDIN, "{} Entered STDIN thread.", id_stdin);
             {
                 use std::io::Write;
+                // NOTE: Here (i.e. inside the loop) we use `trace` instead of `debug` because we are no longer
+                // "receive blocking": we are no polling the channel. The reason for polling instead of blocking is that
+                // we needed a way for this thread to check whether the child process' stdout
+                // had returned, else the current thread would keep waiting until receiving
+                // a "Cancel" command or the other channel's end being dropped.
                 loop {
                     #[cfg(not(feature = "tokio"))]
-                    let recv = rx_command.recv().ok();
+                    let recv = rx_command.try_recv();
                     #[cfg(feature = "tokio")]
-                    let recv = rx_command.blocking_recv();
+                    let recv = rx_command.try_recv();
 
-                    log::info!(target: LOG_TARGET_STDIN, "{} Waiting for next message...", id_stdin);
+                    log::trace!(target: LOG_TARGET_STDIN, "{} Non-blockingly polling channel for next message...", id_stdin);
                     match recv {
-                        Some(c) => match c {
+                        Ok(c) => match c {
                             Command::Cancel => {
                                 log::info!(target: LOG_TARGET_STDIN, "{} Received 'cancel' command.", id_stdin);
-                                log::debug!(target: LOG_TARGET_STDIN, "{} Trying to write 'q' to STDIN...", id_stdin);
+                                log::trace!(target: LOG_TARGET_STDIN, "{} Trying to write 'q' to STDIN...", id_stdin);
                                 match stdin.write_all(b"q") {
                                     Ok(_) => {
-                                        log::debug!(target: LOG_TARGET_STDIN, "{} Successfully wrote 'q' to STDIN.", id_stdin);
+                                        log::trace!(target: LOG_TARGET_STDIN, "{} Successfully wrote 'q' to STDIN.", id_stdin);
                                     }
                                     Err(e) => {
                                         log::error!(target: LOG_TARGET_STDIN, "{} Failed to write 'q' to STDIN: {:?}", id_stdin, e);
                                         panic!();
                                     }
                                 }
-                                log::debug!(target: LOG_TARGET_STDIN, "{} Trying to send cancellation confirmation message...", id_stdin);
+                                log::trace!(target: LOG_TARGET_STDIN, "{} Trying to send cancellation confirmation message...", id_stdin);
                                 match tx_stdin.send(Message::Error(Error::Cancelled)) {
                                     Ok(_) => {
-                                        log::debug!(target: LOG_TARGET_STDIN, "{} Successfully sent cancellation confirmation message.", id_stdin);
+                                        log::trace!(target: LOG_TARGET_STDIN, "{} Successfully sent cancellation confirmation message.", id_stdin);
                                     }
                                     Err(e) => {
                                         log::error!(target: LOG_TARGET_STDIN, "{} Failed to send cancellation confirmation message: {:?}", id_stdin, e);
@@ -197,10 +211,10 @@ impl Converter {
                                     }
                                 }
                                 {
-                                    log::debug!(target: LOG_TARGET_STDIN, "{} Trying to acquire job cancellation mutex to set it to 'true'...", id_stdin);
+                                    log::trace!(target: LOG_TARGET_STDIN, "{} Trying to acquire job cancellation mutex to set it to 'true'...", id_stdin);
                                     let mut job_cancelled = match job_cancelled_stdin.lock() {
                                         Ok(m) => {
-                                            log::debug!(target: LOG_TARGET_STDIN, "{} Job cancellation mutex successfully acquired and set 'true'.", id_stdin);
+                                            log::trace!(target: LOG_TARGET_STDIN, "{} Job cancellation mutex successfully acquired and set 'true'.", id_stdin);
                                             m
                                         }
                                         Err(e) => {
@@ -214,10 +228,50 @@ impl Converter {
                                 break;
                             }
                         },
-                        None => {
-                            log::info!(target: LOG_TARGET_STDIN, "{} Breaking out of STDIN thread because channel closed...", id_stdin);
-                            break;
+                        #[cfg(feature = "tokio")]
+                        Err(e) => match e {
+                            tokio::sync::mpsc::error::TryRecvError::Empty => {
+                                log::trace!(target: LOG_TARGET_STDIN, "{} Channel empty. Sleeping for {} milliseconds...", id_stdin, STDIN_THREAD_SLEEP_DURATION_MS);
+                                std::thread::sleep(std::time::Duration::from_millis(
+                                    STDIN_THREAD_SLEEP_DURATION_MS,
+                                ));
+                            }
+                            tokio::sync::mpsc::error::TryRecvError::Disconnected => {
+                                log::info!(target: LOG_TARGET_STDIN, "{} Breaking out of STDIN thread because channel closed...", id_stdin);
+                                break;
+                            }
+                        },
+                        #[cfg(not(feature = "tokio"))]
+                        Err(e) => match e {
+                            std::sync::mpsc::TryRecvError::Empty => {
+                                log::trace!(target: LOG_TARGET_STDIN, "{} Channel empty. Sleeping for {} milliseconds...", id_stdin, STDIN_THREAD_SLEEP_DURATION_MS);
+                                std::thread::sleep(std::time::Duration::from_millis(
+                                    STDIN_THREAD_SLEEP_DURATION_MS,
+                                ));
+                            }
+                            std::sync::mpsc::TryRecvError::Disconnected => {
+                                log::info!(target: LOG_TARGET_STDIN, "{} Breaking out of STDIN thread because channel closed...", id_stdin);
+                                break;
+                            }
+                        },
+                    }
+
+                    log::trace!(target: LOG_TARGET_STDIN, "{} Trying to acquire 'job ended' mutex to see if the job has completed...", id_stdin);
+                    let job_ended = match job_ended_stdin.lock() {
+                        Err(e) => {
+                            log::error!(target: LOG_TARGET_STDIN, "{} Failed to acquire 'job ended' mutex: {:?}", id_stdin, e);
+                            panic!();
                         }
+                        Ok(m) => {
+                            log::trace!(target: LOG_TARGET_STDIN, "{} Successfully acquired 'job ended' mutex.", id_stdin);
+                            m
+                        }
+                    };
+                    if *job_ended {
+                        log::info!(target: LOG_TARGET_STDIN, "{} Job has ended, so breaking out of 'read loop'...", id_stdin);
+                        break;
+                    } else {
+                        log::trace!(target: LOG_TARGET_STDIN, "{} Job has not ended yet.", id_stdin);
                     }
                 }
 
@@ -227,6 +281,7 @@ impl Converter {
 
         let tx_stdout = self.tx.clone();
         let job_cancelled_stdout = std::sync::Arc::clone(&self.job_cancelled);
+        let job_ended_stdout = std::sync::Arc::clone(&self.job_ended);
         let id_stdout = self.id();
         let handle_stdout = std::thread::spawn(move || {
             log::info!(target: LOG_TARGET_STDOUT, "{} Entered STDOUT thread.", id_stdout);
@@ -284,6 +339,19 @@ impl Converter {
                     }
                 }
             }
+
+            log::debug!(target: LOG_TARGET_STDOUT, "{} Trying to acquire 'job ended' mutex to set it to 'true'...", id_stdout);
+            let mut job_ended = match job_ended_stdout.lock() {
+                Err(e) => {
+                    log::error!(target: LOG_TARGET_STDOUT, "{} Failed to acquire 'job ended' mutex to set it to 'true': {:?}", id_stdout, e);
+                    panic!();
+                }
+                Ok(m) => {
+                    log::debug!(target: LOG_TARGET_STDOUT, "{} Successfully acquired 'job ended' mutex and set it to 'true'.", id_stdout);
+                    m
+                }
+            };
+            *job_ended = true;
 
             log::info!(target: LOG_TARGET_STDOUT, "{} Exiting STDOUT thread...", id_stdout);
         });
@@ -507,6 +575,18 @@ mod tests {
         let _ = env_logger::builder().is_test(true).try_init();
     }
 
+    #[cfg(not(feature = "tokio"))]
+    #[test]
+    fn test_fake() {
+        init_logging();
+        let settings = Settings::with_standard_fps("./assets/big-buck-bunny-clip.mp4".into(), 200);
+        log::info!(
+            "Please implement testing for 'default' feature flag... {:?}",
+            settings
+        );
+    }
+
+    #[cfg(feature = "tokio")]
     #[test]
     fn test_converter_blocking() {
         init_logging();
@@ -519,7 +599,8 @@ mod tests {
         // on your path.
         // let settings = settings.ffmpeg_path("/usr/local/bin/ffmpeg");
 
-        let (converter, _, mut rx) = Converter::new_with_channels();
+        let (converter, tx, mut rx) = Converter::new_with_channels();
+        log::info!("NOTE: Setting 'tx' (i.e. the command sender) above as '_' drops it right away and does not allow us to confirm that the STDIN thread works as expected, so keeping a reference to keep it alive and printting it to get rid of warning: {:?}", tx);
 
         let thread_handle = std::thread::spawn(move || {
             converter.convert(settings);
