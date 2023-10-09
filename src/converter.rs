@@ -299,19 +299,8 @@ impl Converter {
                     log::info!(target: LOG_TARGET_STDOUT, "{} Successfully read to end (size: {}).", id_stdout, n);
                     log::trace!(target: LOG_TARGET_STDOUT, "{} Logging full buffer:\n{:?}", id_stdout, buf);
 
-                    if buf.is_empty() {
-                        log::warn!(target: LOG_TARGET_STDOUT, "{} Empty buffer found, so send 'empty stdout' error message down channel.", id_stdout);
-                        match tx_stdout.send(Message::Error(Error::EmptyStdout)) {
-                            Ok(_) => {
-                                log::debug!(target: LOG_TARGET_STDOUT, "{} Successfully sent error message down channel.", id_stdout);
-                            }
-                            Err(e) => {
-                                log::error!(target: LOG_TARGET_STDOUT, "{} Failed to send error message down channel: {:?}", id_stdout, e);
-                                panic!();
-                            }
-                        }
-                    } else {
-                        log::debug!(target: LOG_TARGET_STDOUT, "{} Trying to acquire job cancellation mutex to check whether job has been cancelled, to avoid sending bytes down channel it case it has...", id_stdout);
+                    log::debug!(target: LOG_TARGET_STDOUT, "{} Trying to acquire job cancellation mutex to check whether job has been cancelled, to avoid sending bytes down channel it case it has...", id_stdout);
+                    let job_cancelled = {
                         let job_cancelled = match job_cancelled_stdout.lock() {
                             Ok(m) => {
                                 log::debug!(target: LOG_TARGET_STDOUT, "{} Successfully acquired job cancellation mutex.", id_stdout);
@@ -322,8 +311,23 @@ impl Converter {
                                 panic!();
                             }
                         };
-                        if !*job_cancelled {
-                            log::debug!(target: LOG_TARGET_STDOUT, "{} Job has not been cancelled, so trying to send data down channel.", id_stdout);
+                        *job_cancelled
+                    };
+
+                    if !job_cancelled {
+                        log::debug!(target: LOG_TARGET_STDOUT, "{} Job has not been cancelled, so checking whether there is data in buffer...", id_stdout);
+                        if buf.is_empty() {
+                            log::warn!(target: LOG_TARGET_STDOUT, "{} Empty buffer found, so send 'empty stdout' error message down channel.", id_stdout);
+                            match tx_stdout.send(Message::Error(Error::EmptyStdout)) {
+                                Ok(_) => {
+                                    log::debug!(target: LOG_TARGET_STDOUT, "{} Successfully sent error message down channel.", id_stdout);
+                                }
+                                Err(e) => {
+                                    log::error!(target: LOG_TARGET_STDOUT, "{} Failed to send error message down channel: {:?}", id_stdout, e);
+                                    panic!();
+                                }
+                            }
+                        } else {
                             match tx_stdout.send(Message::Success(buf)) {
                                 Ok(_) => {
                                     log::debug!(target: LOG_TARGET_STDOUT, "{} Successfully sent STDOUT data down channel.", id_stdout);
@@ -333,9 +337,9 @@ impl Converter {
                                     panic!();
                                 }
                             }
-                        } else {
-                            log::warn!(target: LOG_TARGET_STDOUT, "{} Job has been marked as cancelled, so not sending data down channel.", id_stdout);
                         }
+                    } else {
+                        log::warn!(target: LOG_TARGET_STDOUT, "{} Job has been marked as cancelled, so not sending data down channel.", id_stdout);
                     }
                 }
             }
@@ -358,6 +362,7 @@ impl Converter {
 
         let tx_stderr = self.tx.clone();
         let id_stderr = self.id();
+        let job_cancelled_stderr = std::sync::Arc::clone(&self.job_cancelled);
         let handle_stderr = std::thread::spawn(move || {
             log::info!(target: LOG_TARGET_STDERR, "{} Entered STDERR thread.", id_stderr);
 
@@ -374,6 +379,27 @@ impl Converter {
                 match stderr.read(&mut buffer) {
                     Ok(n) => {
                         log::debug!(target: LOG_TARGET_STDERR, "{} {} bytes read.", id_stderr, n);
+
+                        log::debug!(target: LOG_TARGET_STDERR, "{} Trying to acquire 'job cancelled' mutex to make sure job has not been cancelled...", id_stderr);
+                        let job_cancelled = {
+                            let job_cancelled = match job_cancelled_stderr.lock() {
+                                Ok(m) => {
+                                    log::debug!(target: LOG_TARGET_STDERR, "{} Successfully acquired 'job cancelled' mutex.", id_stderr);
+                                    m
+                                }
+                                Err(e) => {
+                                    log::error!(target: LOG_TARGET_STDERR, "{} Failed to acquire 'job cancelled' mutex: {:?}", id_stderr, e);
+                                    panic!();
+                                }
+                            };
+                            *job_cancelled
+                        };
+                        if job_cancelled {
+                            log::info!(target: LOG_TARGET_STDERR, "{} Job has been cancelled, so breaking out of loop...", id_stderr);
+                            break;
+                        } else {
+                            log::debug!(target: LOG_TARGET_STDERR, "{} Job has not been cancelled, so carrying on with output parsing...", id_stderr);
+                        }
 
                         if n > 0 {
                             full_buffer.append(&mut buffer[..n].to_vec());
@@ -442,8 +468,15 @@ impl Converter {
                                         }
                                     }
                                 } else {
-                                    log::error!(target: LOG_TARGET_STDERR, "{} NOTE: frame= received without duration parsed. Please fix this.", id_stderr);
-                                    panic!();
+                                    // So this is possible if we input an invalid file (e.g. a png), in which case we will get something
+                                    // similar to this (i.e. a "frame=" without first a duration):
+                                    //     out#0/gif @ 0x7fe0a5714b00] Error writing trailer: Invalid argumentbitrate=  -0.0kbits/s speed=N/A
+                                    //         frame=    0 fps=0.0 q=0.0 Lsize=       0kB time=-577014:32:22.77 bitrate=  -0.0kbits/s speed=N/A
+
+                                    // NOTE: No need to panic here I think. We can just do nothing. If it
+                                    // was an invalid input, `stderr` will close and the loop will automatically
+                                    // break...
+                                    log::warn!(target: LOG_TARGET_STDERR, "{} NOTE: frame= received without duration parsed. This may have been caused by invalid input file type.", id_stderr);
                                 }
                             }
                         } else {
@@ -637,5 +670,76 @@ mod tests {
         thread_handle
             .join()
             .expect("Failed to join converter thread");
+    }
+    #[cfg(feature = "tokio")]
+    #[test]
+    fn test_converter_blocking_cancelled_job() {
+        init_logging();
+
+        let settings = Settings::with_standard_fps("./assets/big-buck-bunny-clip.mp4".into(), 400);
+
+        let (converter, tx, mut rx) = Converter::new_with_channels();
+
+        let convert_thread_handle = std::thread::spawn(move || {
+            converter.convert(settings);
+        });
+
+        let tx_clone_cancel_job = tx.clone();
+        let cancel_job_thread_handle = std::thread::spawn(move || {
+            const SLEEP_MS: u64 = 1200;
+            log::info!(
+                "Entering 'cancel job' thread and sleeping for {} milliseconds",
+                SLEEP_MS
+            );
+            std::thread::sleep(std::time::Duration::from_millis(SLEEP_MS));
+            log::info!("Cancelling the job...");
+            match tx_clone_cancel_job.send(Command::Cancel) {
+                Err(e) => {
+                    log::warn!(
+                        "Failed to send job cancellation command down channel: {:?}",
+                        e
+                    );
+                }
+                Ok(_) => {
+                    log::info!("Job cancellation command successfully sent down channel.");
+                }
+            }
+        });
+
+        loop {
+            match rx.blocking_recv() {
+                Some(message) => match message {
+                    Message::Done => {
+                        log::info!(
+                            "Received DONE message from converter. So breaking out of loop..."
+                        );
+                        break;
+                    }
+                    Message::Error(e) => {
+                        log::warn!("{:?}", e);
+                    }
+                    Message::Progress(progress) => {
+                        log::info!("Progress received: {:.04}", progress);
+                    }
+                    Message::VideoDuration(duration) => {
+                        log::info!("Duration received: {:?}", duration);
+                    }
+                    Message::Success(data) => {
+                        log::info!("Successfully parsed data. Byte-length = {}", data.len());
+                    }
+                },
+                None => {
+                    break;
+                }
+            }
+        }
+
+        convert_thread_handle
+            .join()
+            .expect("Failed to join converter thread");
+
+        cancel_job_thread_handle
+            .join()
+            .expect("Failed to join job cancellation thread");
     }
 }

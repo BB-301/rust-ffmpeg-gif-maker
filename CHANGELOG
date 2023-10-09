@@ -1,3 +1,16 @@
+# 0.1.1 (2023-10-09; third deployment)
+
+## Changed
+
+* Made some improvements in `Converter::convert`.
+* Fixed example in [docs/lib.md](./docs/lib.md), because was missing new `Message::Done`
+variant.
+
+## Added
+
+* Added `converter.rs::tests::test_converter_blocking_cancelled_job` to confirm that converter
+works as expected when cancelling a job.
+
 # 0.1.1 (2023-10-07; second deployment)
 
 ## Changed
