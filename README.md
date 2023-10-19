@@ -29,7 +29,7 @@ So, here's how to run the examples:
 
 You could also run them in release mode by adding the `--release` flag like this: `cargo run --release ...`
 
-You may also checkout my other repository for an example illustrating how the library is used in a simple GIF maker GUI application. **(link to repo coming soon...)**
+You may also checkout my [rust-iced-gif-maker](https://github.com/BB-301/rust-iced-gif-maker.git) repository for an example illustrating how the library is used in a simple GIF maker GUI application.
 
 ## Other useful links and references
 
